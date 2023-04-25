@@ -5,6 +5,7 @@
 The Dockerfile copies all files from scratch folder.
 
 `docker build . -t my-tag`
+
 `docker run --rm -it my-tag bash`
 
 ## Example
@@ -14,6 +15,7 @@ The Dockerfile copies all files from scratch folder.
 ## To add visualization
 
 `xhost +`
+
 `docker run --rm -it --name name -e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix:ro my-tag`
 
 ## Example

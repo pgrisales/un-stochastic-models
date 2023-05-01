@@ -73,16 +73,20 @@ void RoutingExperiment::ReceivePacket (Ptr<Socket> socket) {
 }
 
 void RoutingExperiment::Run (int nSinks, double txp, int nWifis) {
-  Packet::EnablePrinting ();
+  Packet::EnablePrinting();
 
-  double TotalTime = 200.0;
-  std::string rate ("2048bps");
-  std::string phyMode ("DsssRate11Mbps");
-  std::string tr_name ("manet-routing-compare");
-  std::string m_protocolName;
+  // Parameter: number of nodes per cluster
+  //int nWifis = 12;
+  // Parameter: number of cluster 
+  int nCluster = 2;
+
+  // number repetitions
+  double TotalTime = 50.0;
+  std::string rate("2048bps");
+  std::string phyMode("DsssRate11Mbps");
+  std::string tr_name("manet-routing-compare");
   int nodeSpeed = 20; //in m/s
   int nodePause = 0; //in s
-
   m_protocolName = "protocol";
 
   Config::SetDefault  ("ns3::OnOffApplication::PacketSize",StringValue ("64"));
@@ -91,9 +95,29 @@ void RoutingExperiment::Run (int nSinks, double txp, int nWifis) {
   //Set Non-unicastMode rate to unicast mode
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode",StringValue (phyMode));
 
-  // Cluster of nodes ??
+  // Layer 
+  int nTotalNodes = nCluster * nWifis;
+
+  NodeContainer layer1;
+  layer1.Create(nTotalNodes);
+
+  NodeContainer layer2;
+
+  // Clusters
   NodeContainer adhocNodes;
-  adhocNodes.Create (nWifis);
+  NodeContainer adhocNodes2;
+
+  for(int i = 0; i < nWifis; i++){
+    adhocNodes.Add(layer1.Get(i));
+  }
+
+  layer2.Add(adhocNodes.Get(0));
+
+  for(int i = 0; i < nWifis; i++){
+    adhocNodes2.Add(layer1.Get(i+nWifis));
+  }
+
+  layer2.Add(adhocNodes2.Get(0));
 
   // setting up wifi phy and channel using helpers
   WifiHelper wifi;
@@ -101,9 +125,9 @@ void RoutingExperiment::Run (int nSinks, double txp, int nWifis) {
 
   YansWifiPhyHelper wifiPhy;
   YansWifiChannelHelper wifiChannel;
-  wifiChannel.SetPropagationDelay ("ns3::ConstantSpeedPropagationDelayModel");
-  wifiChannel.AddPropagationLoss ("ns3::FriisPropagationLossModel");
-  wifiPhy.SetChannel (wifiChannel.Create ());
+  wifiChannel.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel.AddPropagationLoss("ns3::FriisPropagationLossModel");
+  wifiPhy.SetChannel(wifiChannel.Create ());
 
   // Add a mac and disable rate control
   WifiMacHelper wifiMac;
@@ -113,18 +137,22 @@ void RoutingExperiment::Run (int nSinks, double txp, int nWifis) {
 
   wifiPhy.Set ("TxPowerStart",DoubleValue (txp));
   wifiPhy.Set ("TxPowerEnd", DoubleValue (txp));
-  
+
   wifiMac.SetType ("ns3::AdhocWifiMac");
-  NetDeviceContainer adhocDevices = wifi.Install (wifiPhy, wifiMac, adhocNodes);
+
+  NetDeviceContainer nLayer2 = wifi.Install(wifiPhy, wifiMac, layer2);
+  NetDeviceContainer adhocDevices = wifi.Install(wifiPhy, wifiMac, adhocNodes);
+  NetDeviceContainer adhocDevices2 = wifi.Install (wifiPhy, wifiMac, adhocNodes2);
 
   MobilityHelper mobilityAdhoc;
+
   int64_t streamIndex = 0; // used to get consistent mobility across scenarios
 
   ObjectFactory pos;
+  // Parameter: Geographical space 
   pos.SetTypeId ("ns3::RandomRectanglePositionAllocator");
-  // Parameter: Geographical space -> 500m x 500m
-  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
-  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
+  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=40.0]"));
+  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=40.0]"));
 
   Ptr<PositionAllocator> taPositionAlloc = pos.Create ()->GetObject<PositionAllocator> ();
   streamIndex += taPositionAlloc->AssignStreams (streamIndex);
@@ -137,9 +165,27 @@ void RoutingExperiment::Run (int nSinks, double txp, int nWifis) {
                                   "Speed", StringValue (ssSpeed.str ()),
                                   "Pause", StringValue (ssPause.str ()),
                                   "PositionAllocator", PointerValue (taPositionAlloc));
-  mobilityAdhoc.SetPositionAllocator (taPositionAlloc);
-  mobilityAdhoc.Install (adhocNodes);
+  mobilityAdhoc.SetPositionAllocator(taPositionAlloc);
+  mobilityAdhoc.Install(adhocNodes);
+  // Parameter: Geographical space 
+  pos.SetTypeId ("ns3::RandomRectanglePositionAllocator");
+  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=120.0|Max=150.0]"));
+  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=120.0|Max=150.0]"));
+
+  taPositionAlloc = pos.Create ()->GetObject<PositionAllocator> ();
+  streamIndex += taPositionAlloc->AssignStreams (streamIndex);
+
+  ssSpeed << "ns3::UniformRandomVariable[Min=0.0|Max=" << nodeSpeed << "]";
+  ssPause << "ns3::ConstantRandomVariable[Constant=" << nodePause << "]";
+  mobilityAdhoc.SetMobilityModel ("ns3::RandomWaypointMobilityModel",
+                                  "Speed", StringValue (ssSpeed.str ()),
+                                  "Pause", StringValue (ssPause.str ()),
+                                  "PositionAllocator", PointerValue (taPositionAlloc));
+  mobilityAdhoc.SetPositionAllocator(taPositionAlloc);
+  mobilityAdhoc.Install(adhocNodes2);
+
   streamIndex += mobilityAdhoc.AssignStreams (adhocNodes, streamIndex);
+
   NS_UNUSED (streamIndex); // From this point, streamIndex is unused
 
   OlsrHelper olsr;
@@ -149,97 +195,73 @@ void RoutingExperiment::Run (int nSinks, double txp, int nWifis) {
   list.Add (olsr, 100);
   m_protocolName = "OLSR";
 
-  internet.SetRoutingHelper (list);
-  internet.Install (adhocNodes);
+  internet.SetRoutingHelper(list);
+  internet.Install(layer1);
+  //internet.Install(adhocNodes);
+  //internet.Install(adhocNodes2);
+
   NS_LOG_INFO ("assigning ip address");
 
-  Ipv4AddressHelper addressAdhoc;
-  addressAdhoc.SetBase ("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer adhocInterfaces;
-  adhocInterfaces = addressAdhoc.Assign (adhocDevices);
+  // SETTING NETWORK
 
-  OnOffHelper onoff1 ("ns3::UdpSocketFactory",Address ());
+  Ipv4AddressHelper addressAdhoc;
+
+  addressAdhoc.SetBase("10.1.1.0", "255.255.255.0");
+  Ipv4InterfaceContainer adhocInterfaces = addressAdhoc.Assign(adhocDevices);
+
+  addressAdhoc.SetBase("10.1.2.0", "255.255.255.0");
+  Ipv4InterfaceContainer adhocInterfaces2 = addressAdhoc.Assign(adhocDevices2);
+
+  addressAdhoc.SetBase("10.1.3.0", "255.255.255.0");
+  Ipv4InterfaceContainer layer2Interfaces = addressAdhoc.Assign(nLayer2);
+
+  OnOffHelper onoff1 ("ns3::UdpSocketFactory", Address());
+
   onoff1.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=1.0]"));
   onoff1.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.0]"));
 
-  for (int i = 0; i < nSinks; i++) {
-      Ptr<Socket> sink = SetupPacketReceive (adhocInterfaces.GetAddress (i), adhocNodes.Get (i));
+  // Sending Pack
 
-      AddressValue remoteAddress (InetSocketAddress (adhocInterfaces.GetAddress (i), port));
-      onoff1.SetAttribute ("Remote", remoteAddress);
+  Ptr<Socket> sink = SetupPacketReceive(adhocInterfaces.GetAddress(0), adhocNodes.Get(0));
+  AddressValue remoteAddress(InetSocketAddress(adhocInterfaces.GetAddress(0), port));
+  onoff1.SetAttribute ("Remote", remoteAddress);
 
-      Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable> ();
-      //ApplicationContainer temp = onoff1.Install (adhocNodes.Get (i + nSinks)); // Works is nodes.size > nodes.sizes + nSinks
-      ApplicationContainer temp = onoff1.Install (adhocNodes.Get(i));
-      temp.Start (Seconds (var->GetValue (100.0,101.0)));
-      temp.Stop (Seconds (TotalTime));
-    }
 
+  Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable>();
+  ApplicationContainer temp = onoff1.Install(adhocNodes.Get(1));
+  temp.Start (Seconds (var -> GetValue (100.0,101.0)));
+  temp.Stop (Seconds (TotalTime));
+    
   std::stringstream ss;
   ss << nWifis;
-  std::string nodes = ss.str ();
+  std::string nodes = ss.str();
 
   std::stringstream ss2;
   ss2 << nodeSpeed;
-  std::string sNodeSpeed = ss2.str ();
+  std::string sNodeSpeed = ss2.str();
 
   std::stringstream ss3;
   ss3 << nodePause;
-  std::string sNodePause = ss3.str ();
+  std::string sNodePause = ss3.str();
 
   std::stringstream ss4;
   ss4 << rate;
-  std::string sRate = ss4.str ();
+  std::string sRate = ss4.str();
 
   AsciiTraceHelper ascii;
-  MobilityHelper::EnableAsciiAll (ascii.CreateFileStream (tr_name + ".mob"));
+  MobilityHelper::EnableAsciiAll(ascii.CreateFileStream (tr_name + ".mob"));
 
   NS_LOG_INFO ("Run Simulation.");
 
-  Simulator::Stop (Seconds (TotalTime));
-  Simulator::Run ();
+  Simulator::Stop(Seconds (TotalTime));
+  Simulator::Run();
 
-  Simulator::Destroy ();
+  Simulator::Destroy();
+
 }
 
 int main() {
   int n1 = 8;
-//  int n2 = 2;
-//  int nodeSpeed = 20; //in m/s
-//  int nodePause = 0; //in s
-/*
-  NodeContainer nodes1;
-  nodes1.Create(n1);
-
-  NodeContainer nodes2;
-  nodes1.Create(n2);
-
-  MobilityHelper mobilityAdhoc;
-  int64_t streamIndex = 0; // used to get consistent mobility across scenarios
-
-  ObjectFactory pos;
-  pos.SetTypeId ("ns3::RandomRectanglePositionAllocator");
-  // Parameter: Geographical space -> 500m x 500m
-  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
-  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
-
-  Ptr<PositionAllocator> taPositionAlloc = pos.Create ()->GetObject<PositionAllocator> ();
-  streamIndex += taPositionAlloc->AssignStreams (streamIndex);
-
-  std::stringstream ssSpeed;
-  ssSpeed << "ns3::UniformRandomVariable[Min=0.0|Max=" << nodeSpeed << "]";
-  std::stringstream ssPause;
-  ssPause << "ns3::ConstantRandomVariable[Constant=" << nodePause << "]";
-  mobilityAdhoc.SetMobilityModel("ns3::RandomWaypointMobilityModel",
-                                 "Speed", StringValue(ssSpeed.str()),
-                                 "Pause", StringValue(ssPause.str()),
-                                 "PositionAllocator", PointerValue(taPositionAlloc));
-  mobilityAdhoc.SetPositionAllocator(taPositionAlloc);
-  mobilityAdhoc.Install(nodes1);
-  streamIndex += mobilityAdhoc.AssignStreams (nodes1, streamIndex);
-  //streamIndex += mobilityAdhoc.AssignStreams(nodes1, 10);
-  NS_UNUSED(streamIndex); // From this point, streamIndex is unused
-*/
   RoutingExperiment experiment;
 
   //int nSinks = 10; //nSinks should be less than #Nodes

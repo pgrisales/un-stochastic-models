@@ -1,3 +1,39 @@
+/*
+ * This example program allows one to run ns-3 DSDV, AODV, or OLSR under
+ * a typical random waypoint mobility model.
+ *
+ * By default, the simulation runs for 200 simulated seconds, of which
+ * the first 50 are used for start-up time.  The number of nodes is 50.
+ * Nodes move according to RandomWaypointMobilityModel with a speed of
+ * 20 m/s and no pause time within a 300x1500 m region.  The WiFi is
+ * in ad hoc mode with a 2 Mb/s rate (802.11b) and a Friis loss model.
+ * The transmit power is set to 7.5 dBm.
+ *
+ * It is possible to change the mobility and density of the network by
+ * directly modifying the speed and the number of nodes.  It is also
+ * possible to change the characteristics of the network by changing
+ * the transmit power (as power increases, the impact of mobility
+ * decreases and the effective density increases).
+ *
+ * By default, OLSR is used, but specifying a value of 2 for the protocol
+ * will cause AODV to be used, and specifying a value of 3 will cause
+ * DSDV to be used.
+ *
+ * By default, there are 10 source/sink data pairs sending UDP data
+ * at an application rate of 2.048 Kb/s each.    This is typically done
+ * at a rate of 4 64-byte packets per second.  Application data is
+ * started at a random time between 50 and 51 seconds and continues
+ * to the end of the simulation.
+ *
+ * The program outputs a few items:
+ * - packet receptions are notified to stdout such as:
+ *   <timestamp> <node-id> received one packet from <src-address>
+ * - each second, the data reception statistics are tabulated and output
+ *   to a comma-separated value (csv) file
+ * - some tracing and flow monitor configuration that used to work is
+ *   left commented inline in the program
+ */
+
 #include <fstream>
 #include <iostream>
 #include "ns3/core-module.h"
@@ -10,6 +46,8 @@
 #include "ns3/dsr-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/yans-wifi-helper.h"
+
+//#include "ns3/flow-monitor-helper.h"
 
 using namespace ns3;
 using namespace dsr;
@@ -48,7 +86,7 @@ RoutingExperiment::RoutingExperiment ()
     packetsReceived (0),
     m_CSVfileName ("manet-routing.output.csv"),
     m_traceMobility (false),
-    m_protocol (2) // AODV
+    m_protocol (1) // AODV
 {
 }
 
@@ -105,8 +143,9 @@ RoutingExperiment::CheckThroughput ()
   Simulator::Schedule (Seconds (1.0), &RoutingExperiment::CheckThroughput, this);
 }
 
-Ptr<Socket> RoutingExperiment::SetupPacketReceive (Ipv4Address addr, Ptr<Node> node) {
-
+Ptr<Socket>
+RoutingExperiment::SetupPacketReceive (Ipv4Address addr, Ptr<Node> node)
+{
   TypeId tid = TypeId::LookupByName ("ns3::UdpSocketFactory");
   Ptr<Socket> sink = Socket::CreateSocket (node, tid);
   InetSocketAddress local = InetSocketAddress (addr, port);
@@ -127,9 +166,9 @@ RoutingExperiment::CommandSetup (int argc, char **argv)
   return m_CSVfileName;
 }
 
-int main (int argc, char *argv[])
+int
+main (int argc, char *argv[])
 {
-  /*
   RoutingExperiment experiment;
   std::string CSVfileName = experiment.CommandSetup (argc,argv);
 
@@ -148,19 +187,17 @@ int main (int argc, char *argv[])
   double txp = 7.5;
 
   experiment.Run (nSinks, txp, CSVfileName);
-  */
 }
 
-void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
+void
+RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
 {
   Packet::EnablePrinting ();
   m_nSinks = nSinks;
   m_txp = txp;
   m_CSVfileName = CSVfileName;
 
-  // Parameter: number of nodes -> 6?
-  //int nWifis = 50;
-  int nWifis = 20;
+  int nWifis = 50;
 
   double TotalTime = 200.0;
   std::string rate ("2048bps");
@@ -176,11 +213,8 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
   //Set Non-unicastMode rate to unicast mode
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode",StringValue (phyMode));
 
-  // Cluster of nodes ??
   NodeContainer adhocNodes;
-  NodeContainer adhocNodes2;
-  adhocNodes2.Create (20);
-  adhocNodes.Create (10);
+  adhocNodes.Create (nWifis);
 
   // setting up wifi phy and channel using helpers
   WifiHelper wifi;
@@ -209,9 +243,8 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
 
   ObjectFactory pos;
   pos.SetTypeId ("ns3::RandomRectanglePositionAllocator");
-  // Parameter: Geographical space -> 500m x 500m
-  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
-  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
+  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=300.0]"));
+  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=1500.0]"));
 
   Ptr<PositionAllocator> taPositionAlloc = pos.Create ()->GetObject<PositionAllocator> ();
   streamIndex += taPositionAlloc->AssignStreams (streamIndex);
@@ -226,9 +259,7 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
                                   "PositionAllocator", PointerValue (taPositionAlloc));
   mobilityAdhoc.SetPositionAllocator (taPositionAlloc);
   mobilityAdhoc.Install (adhocNodes);
-  //streamIndex += mobilityAdhoc.AssignStreams (adhocNodes, streamIndex);
-  printf("%ld\n", streamIndex);
-  streamIndex += mobilityAdhoc.AssignStreams (adhocNodes, 10);
+  streamIndex += mobilityAdhoc.AssignStreams (adhocNodes, streamIndex);
   NS_UNUSED (streamIndex); // From this point, streamIndex is unused
 
   AodvHelper aodv;
@@ -293,6 +324,7 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
       ApplicationContainer temp = onoff1.Install (adhocNodes.Get (i + nSinks));
       temp.Start (Seconds (var->GetValue (100.0,101.0)));
       temp.Stop (Seconds (TotalTime));
+      //temp.Stop (Seconds (10.0));
     }
 
   std::stringstream ss;
@@ -320,10 +352,8 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
   AsciiTraceHelper ascii;
   MobilityHelper::EnableAsciiAll (ascii.CreateFileStream (tr_name + ".mob"));
 
-  //Ptr<FlowMonitor> flowmon;
   //FlowMonitorHelper flowmonHelper;
-  //flowmon = flowmonHelper.InstallAll ();
-
+  //Ptr<FlowMonitor> flowmon = flowmonHelper.InstallAll();
 
   NS_LOG_INFO ("Run Simulation.");
 
@@ -332,8 +362,7 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName)
   Simulator::Stop (Seconds (TotalTime));
   Simulator::Run ();
 
-  //flowmon->SerializeToXmlFile ((tr_name + ".flowmon").c_str(), false, false);
+  //flowmon -> SerializeToXmlFile((tr_name + ".flowmon").c_str(), false, false);
 
   Simulator::Destroy ();
 }
-

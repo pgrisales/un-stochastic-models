@@ -9,6 +9,9 @@
 #include "ns3/yans-wifi-helper.h"
 
 #include "ns3/flow-monitor-helper.h"
+#include <iomanip> 
+
+#include <ns3/ipv4-flow-classifier.h>
 
 using namespace ns3;
 
@@ -73,14 +76,18 @@ void RoutingExperiment::CheckThroughput () {
 
   out.close ();
   packetsReceived = 0;
-  Simulator::Schedule (Seconds (1.0), &RoutingExperiment::CheckThroughput, this);
+  Simulator::Schedule(Seconds (1.0), &RoutingExperiment::CheckThroughput, this);
 }
 
 static inline std::string PrintReceivedPacket (Ptr<Socket> socket, Ptr<Packet> packet, Address senderAddress) {
   std::ostringstream oss;
+  oss << std::setprecision(10);
 
-  oss << Simulator::Now().GetSeconds() << " " << socket->GetNode()->GetId();
+  double t2 = Simulator::Now().GetSeconds();
+  //std::string diff = std::to_string(t2-t1);
 
+  //oss << "Tiempo recibido: " << t2 << " Diferencia: " << " Id paquete: " << packet->GetUid() << " " << socket->GetNode()->GetId();
+  oss << "Tiempo recibido: " << t2  << " Id paquete: " << packet->GetUid()<< " " << socket->GetNode()->GetId();
   if(InetSocketAddress::IsMatchingType(senderAddress)) {
       InetSocketAddress addr = InetSocketAddress::ConvertFrom(senderAddress);
       oss << " received one packet from " << addr.GetIpv4();
@@ -88,17 +95,20 @@ static inline std::string PrintReceivedPacket (Ptr<Socket> socket, Ptr<Packet> p
   else {
       oss << " received one packet!";
     }
-  return oss.str ();
+  return oss.str();
 }
 
-void RoutingExperiment::ReceivePacket (Ptr<Socket> socket) {
+void RoutingExperiment::ReceivePacket(Ptr<Socket> socket) {
   Ptr<Packet> packet;
   Address senderAddress;
-  while ((packet = socket -> RecvFrom(senderAddress))) {
+  //printf("\n%s %ld. %s %.8f\n", "Id paquete:", packet->GetUid(), "Tiempo envio: ", t1);
+  while ((packet = socket->RecvFrom(senderAddress))) {
+      //double t1 = Simulator::Now().GetSeconds();
+      //printf("\n%s %.8f\n", "Tiempo envio: ", t1);
       bytesTotal += packet -> GetSize();
       packetsReceived += 1;
-      NS_LOG_UNCOND (PrintReceivedPacket(socket, packet, senderAddress));
-    }
+      NS_LOG_UNCOND(PrintReceivedPacket(socket, packet, senderAddress));
+  }
 }
 
 Ptr<Socket> RoutingExperiment::SetupPacketReceive(Ipv4Address addr, Ptr<Node> node) {
@@ -107,7 +117,9 @@ Ptr<Socket> RoutingExperiment::SetupPacketReceive(Ipv4Address addr, Ptr<Node> no
   InetSocketAddress local = InetSocketAddress(addr, port);
   sink -> Bind(local);
   sink -> SetRecvCallback(MakeCallback(&RoutingExperiment::ReceivePacket, this));
-
+  int i = 0;
+  printf("%d", i);
+  i++;
   return sink;
 }
 
@@ -138,19 +150,14 @@ int main (int argc, char *argv[]) {
   int nSinks = 3;
   double txp = 7.5;
 
-  experiment.Run (nSinks, txp, CSVfileName);
+  experiment.Run(nSinks, txp, CSVfileName);
 }
 
-void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
+void RoutingExperiment::Run(int nSinks, double txp, std::string CSVfileName) {
   Packet::EnablePrinting();
   m_nSinks = nSinks;
   m_txp = txp;
   m_CSVfileName = CSVfileName;
-
-  // Parameter: number of nodes per cluster
-  int nNodes = 6;
-  // Parameter: number of cluster 
-  int nClusters = 6;
 
   double TotalTime = 200.0;
   std::string rate("2048bps");
@@ -165,37 +172,59 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
 
   //Set Non-unicastMode rate to unicast mode
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode",StringValue (phyMode));
+  
+  /*   Layer 1: 4 Clusters with 6 Nodes
+       Layer 2: 2 Clusters with 2 Nodes
+       Layer 3: 2 Nodes
+  */
 
-  // Layer 
-  int nTotalNodes = nClusters * nNodes;
+  // Parameter: Number of nodes per cluster
+  int nNodes_1l = 6;
+  int nNodes_2l = 2;
+  // Parameter: Number of Clusters 
+  int nClusters_1l = 4; // -> 6 * 4 = 24
+  int nClusters_2l = 2; // -> 2 * 2 = 4
+
+  // Layers 
+  int nTotalNodes = nNodes_1l * nClusters_1l + nNodes_2l * nClusters_2l;
 
   NodeContainer layer1;
   layer1.Create(nTotalNodes);
 
   NodeContainer layer2;
+  NodeContainer layer3;
 
   // Clusters
   NodeContainer cluster;
   NodeContainer cluster2;
   NodeContainer cluster3;
   NodeContainer cluster4;
-  NodeContainer cluster5;
-  NodeContainer cluster6;
 
-  for(int i = 0; i < nNodes; i++){
+  NodeContainer cluster_2l;
+  NodeContainer cluster2_2l;
+
+  for(int i = 0; i < nNodes_1l; i++){
     cluster.Add(layer1.Get(i));
-    cluster2.Add(layer1.Get(i+nNodes));
-    cluster3.Add(layer1.Get(i+nNodes*2));
-    cluster4.Add(layer1.Get(i+nNodes*3));
-    cluster5.Add(layer1.Get(i+nNodes*4));
-    cluster6.Add(layer1.Get(i+nNodes*5));
+    cluster2.Add(layer1.Get(i + nNodes_1l));
+    cluster3.Add(layer1.Get(i + nNodes_1l*2));
+    cluster4.Add(layer1.Get(i + nNodes_1l*3));
   }
 
-  layer2.Add(cluster.Get(0));
-  layer2.Add(cluster2.Get(0));
-  layer2.Add(cluster3.Get(0));
-  layer2.Add(cluster4.Get(0));
-  layer2.Add(cluster5.Get(0));
+  int total_nodes_2l = nNodes_2l * nClusters_2l;
+  int idx_2l = nNodes_1l * nClusters_1l;
+
+  for(int i = 0; i < total_nodes_2l; i++){
+    layer2.Add(layer1.Get(i+idx_2l));
+  }
+
+  for(int i = 0; i < nNodes_2l; i++){
+    cluster_2l.Add(layer2.Get(i));
+    cluster2_2l.Add(layer2.Get(i + nNodes_2l));
+  }
+
+  layer3.Add(cluster_2l.Get(0));
+  layer3.Add(cluster2_2l.Get(0));
+
 
   //////////////////////////////////// START /////////////////////////////////////////
 
@@ -241,7 +270,6 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
 
   /////////////////////////////////////////////////////////////////////
 
-
   YansWifiPhyHelper wifiPhy3;
   YansWifiChannelHelper wifiChannel3;
   wifiChannel3.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -254,7 +282,6 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   NetDeviceContainer netCluster2 = wifi.Install(wifiPhy3, wifiMac, cluster2);
 
   /////////////////////////////////////////////////////////////////////
-
 
   YansWifiPhyHelper wifiPhy4;
   YansWifiChannelHelper wifiChannel4;
@@ -269,7 +296,6 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
 
   /////////////////////////////////////////////////////////////////////
 
-
   YansWifiPhyHelper wifiPhy5;
   YansWifiChannelHelper wifiChannel5;
   wifiChannel5.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -283,7 +309,6 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
 
   /////////////////////////////////////////////////////////////////////
 
-
   YansWifiPhyHelper wifiPhy6;
   YansWifiChannelHelper wifiChannel6;
   wifiChannel6.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -293,9 +318,9 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   wifiPhy6.Set("TxPowerStart",DoubleValue(txp));
   wifiPhy6.Set("TxPowerEnd", DoubleValue(txp));
 
-  NetDeviceContainer netCluster5 = wifi.Install(wifiPhy6, wifiMac, cluster5);
-  /////////////////////////////////////////////////////////////////////
+  NetDeviceContainer netCluster_2l = wifi.Install(wifiPhy6, wifiMac, cluster_2l);
 
+  /////////////////////////////////////////////////////////////////////
 
   YansWifiPhyHelper wifiPhy7;
   YansWifiChannelHelper wifiChannel7;
@@ -306,7 +331,8 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   wifiPhy7.Set("TxPowerStart",DoubleValue(txp));
   wifiPhy7.Set("TxPowerEnd", DoubleValue(txp));
 
-  NetDeviceContainer netCluster6 = wifi.Install(wifiPhy7, wifiMac, cluster6);
+  NetDeviceContainer netCluster2_2l = wifi.Install(wifiPhy7, wifiMac, cluster2_2l);
+
   /////////////////////////////////////////////////////////////////////
 
   YansWifiPhyHelper wifiPhy8;
@@ -319,6 +345,19 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   wifiPhy8.Set("TxPowerEnd", DoubleValue(txp));
 
   NetDeviceContainer nLayer2 = wifi.Install(wifiPhy8, wifiMac, layer2);
+
+  /////////////////////////////////////////////////////////////////////
+
+  YansWifiPhyHelper wifiPhy11;
+  YansWifiChannelHelper wifiChannel11;
+  wifiChannel11.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel11.AddPropagationLoss("ns3::FriisPropagationLossModel");
+  wifiPhy11.SetChannel(wifiChannel11.Create());
+
+  wifiPhy11.Set("TxPowerStart",DoubleValue(txp));
+  wifiPhy11.Set("TxPowerEnd", DoubleValue(txp));
+
+  NetDeviceContainer nLayer3 = wifi.Install(wifiPhy11, wifiMac, layer3);
 
   //////////////////////////////////// END /////////////////////////////////////////
 
@@ -350,8 +389,8 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   mobilityAdhoc.Install(cluster2);
   mobilityAdhoc.Install(cluster3);
   mobilityAdhoc.Install(cluster4);
-  mobilityAdhoc.Install(cluster5);
-  mobilityAdhoc.Install(cluster6);
+  mobilityAdhoc.Install(cluster_2l);
+  mobilityAdhoc.Install(cluster2_2l);
 /*
   // Parameter: Geographical space 
   pos.SetTypeId ("ns3::RandomRectanglePositionAllocator");
@@ -402,13 +441,16 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   Ipv4InterfaceContainer cluster4I = ipv4.Assign(netCluster4);
 
   ipv4.SetBase("10.1.6.0", "255.255.255.0");
-  Ipv4InterfaceContainer cluster5I = ipv4.Assign(netCluster5);
+  Ipv4InterfaceContainer clusterI_2l = ipv4.Assign(netCluster_2l);
 
   ipv4.SetBase("10.1.7.0", "255.255.255.0");
-  Ipv4InterfaceContainer cluster6I = ipv4.Assign(netCluster6);
+  Ipv4InterfaceContainer cluster2I_2l = ipv4.Assign(netCluster2_2l);
 
   ipv4.SetBase("10.1.8.0", "255.255.255.0");
   Ipv4InterfaceContainer layer2I = ipv4.Assign(nLayer2);
+
+  ipv4.SetBase("10.1.9.0", "255.255.255.0");
+  Ipv4InterfaceContainer layer3I = ipv4.Assign(nLayer3);
 
   //OnOffHelper onoff1 ("ns3::UdpSocketFactory", Address());
   OnOffHelper onoff1 ("ns3::UdpSocketFactory", InetSocketAddress(layer2I.GetAddress(0), port));
@@ -418,22 +460,23 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   onoff1.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.0]"));
 
   // Sending Pack
-
-  for(int i = 0; i < 2; i++){
+  for(int i = 0; i < 1; i++){
 
     ////// RECEIVER 
     Ptr<Socket> sink = SetupPacketReceive(layer2I.GetAddress(0), layer2.Get(0));
 
     ////// SENDER
-
     Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable>();
-    ApplicationContainer temp = onoff1.Install(layer1.Get(12));
-    temp.Start (Seconds (var -> GetValue (100.0, 101.0)));
-    temp.Stop (Seconds (TotalTime));
+    ApplicationContainer temp = onoff1.Install(layer1.Get(17));
+    double t = var->GetValue(10.0, 11.0);
+
+    temp.Start(Seconds(t));
+    //temp.Start (Seconds(var->GetValue(100.0, 101.0)));
+    temp.Stop(Seconds(TotalTime));
   }
 
   std::stringstream ss;
-  ss << nNodes;
+  ss << nNodes_1l;
   std::string nodes = ss.str();
 
   std::stringstream ss2;
@@ -449,20 +492,42 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   std::string sRate = ss4.str();
 
   AsciiTraceHelper ascii;
-  MobilityHelper::EnableAsciiAll(ascii.CreateFileStream (tr_name + ".mob"));
+  MobilityHelper::EnableAsciiAll(ascii.CreateFileStream(tr_name + ".mob"));
 
   //Ptr<FlowMonitor> flowmon;
-  //FlowMonitorHelper flowmonHelper;
-  //flowmon = flowmonHelper.InstallAll ();
+  FlowMonitorHelper flowmon;
+  //flowmon = flowmonHelper.InstallAll();
+  Ptr<FlowMonitor> monitor = flowmon.InstallAll();
+  //FlowMonitor fm = flowmon->GetMonitor();
+
+  Ptr<Ipv4FlowClassifier> classifier = DynamicCast<Ipv4FlowClassifier>(flowmon.GetClassifier ());
+  std::map<FlowId, FlowMonitor::FlowStats> stats = monitor->GetFlowStats();
 
   NS_LOG_INFO ("Run Simulation.");
 
   CheckThroughput();
 
-  Simulator::Stop(Seconds (TotalTime));
+  Simulator::Stop(Seconds(TotalTime));
   Simulator::Run();
 
-  //flowmon->SerializeToXmlFile ((tr_name + ".flowmon").c_str(), false, false);
+  NS_LOG_UNCOND("Checking for lost packets...");
+
+  monitor->CheckForLostPackets ();
+
+  NS_LOG_UNCOND("Checking flows...");
+  
+  for(std::map<FlowId, FlowMonitor::FlowStats>::const_iterator iter = stats.begin (); iter != stats.end (); ++iter) {
+      Ipv4FlowClassifier::FiveTuple t = classifier->FindFlow (iter->first);
+      
+      if(t.sourcePort == port || t.destinationPort == port) {
+        NS_LOG_UNCOND("Flow ID: " << iter->first << " Src Addr " << t.sourceAddress << " Dst Addr " << t.destinationAddress << " Protocol " << t.protocol);
+        NS_LOG_UNCOND("Tx Packets = " << iter->second.txPackets);
+        NS_LOG_UNCOND("Rx Packets = " << iter->second.rxPackets);
+        NS_LOG_UNCOND("Throughput: " << iter->second.rxBytes * 8.0 / (iter->second.timeLastRxPacket.GetSeconds()-iter->second.timeFirstTxPacket.GetSeconds()) / 1024  << " Kbps");
+      }
+    }
+
+  monitor->SerializeToXmlFile((tr_name + ".flowmon").c_str(), false, false);
 
   Simulator::Destroy();
 }

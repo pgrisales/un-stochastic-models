@@ -4,12 +4,14 @@
 #include "ns3/network-module.h"
 #include "ns3/internet-module.h"
 #include "ns3/mobility-module.h"
-#include "ns3/aodv-module.h"
 #include "ns3/olsr-module.h"
 #include "ns3/applications-module.h"
 #include "ns3/yans-wifi-helper.h"
 
 #include "ns3/flow-monitor-helper.h"
+#include <iomanip> 
+
+#include <ns3/ipv4-flow-classifier.h>
 
 using namespace ns3;
 
@@ -38,9 +40,14 @@ private:
   uint32_t m_protocol;
 };
 
-class layer {
+class Layer {
 public:
-  RoutingExperiment experiment;
+  int nClusters;
+  int nNodes;
+  Layer(int clusters, int nodes){
+    nClusters = clusters;
+    nNodes = nodes;
+  }
 };
 
 RoutingExperiment::RoutingExperiment ()
@@ -69,18 +76,18 @@ void RoutingExperiment::CheckThroughput () {
 
   out.close ();
   packetsReceived = 0;
-  Simulator::Schedule (Seconds (1.0), &RoutingExperiment::CheckThroughput, this);
+  Simulator::Schedule(Seconds (1.0), &RoutingExperiment::CheckThroughput, this);
 }
 
 static inline std::string PrintReceivedPacket (Ptr<Socket> socket, Ptr<Packet> packet, Address senderAddress) {
   std::ostringstream oss;
+  oss << std::setprecision(10);
 
-  oss << Simulator::Now().GetSeconds() << " " << socket->GetNode()->GetId();
-  //int idx = socket -> GetNode() -> GetId();
-  //InetSocketAddress receiver = InetSocketAddress::ConvertFrom(socket->GetNode()->GetDevice(idx)->GetAddress());
-  //InetSocketAddress receiver = InetSocketAddress::ConvertFrom(socket->RecvFrom());
-  //oss << Simulator::Now().GetSeconds() << " " << receiver.GetIpv4();
+  double t2 = Simulator::Now().GetSeconds();
+  //std::string diff = std::to_string(t2-t1);
 
+  //oss << "Tiempo recibido: " << t2 << " Diferencia: " << " Id paquete: " << packet->GetUid() << " " << socket->GetNode()->GetId();
+  oss << "Tiempo recibido: " << t2  << " Id paquete: " << packet->GetUid()<< " " << socket->GetNode()->GetId();
   if(InetSocketAddress::IsMatchingType(senderAddress)) {
       InetSocketAddress addr = InetSocketAddress::ConvertFrom(senderAddress);
       oss << " received one packet from " << addr.GetIpv4();
@@ -88,17 +95,20 @@ static inline std::string PrintReceivedPacket (Ptr<Socket> socket, Ptr<Packet> p
   else {
       oss << " received one packet!";
     }
-  return oss.str ();
+  return oss.str();
 }
 
-void RoutingExperiment::ReceivePacket (Ptr<Socket> socket) {
+void RoutingExperiment::ReceivePacket(Ptr<Socket> socket) {
   Ptr<Packet> packet;
   Address senderAddress;
-  while ((packet = socket -> RecvFrom(senderAddress))) {
+  //printf("\n%s %ld. %s %.8f\n", "Id paquete:", packet->GetUid(), "Tiempo envio: ", t1);
+  while ((packet = socket->RecvFrom(senderAddress))) {
+      //double t1 = Simulator::Now().GetSeconds();
+      //printf("\n%s %.8f\n", "Tiempo envio: ", t1);
       bytesTotal += packet -> GetSize();
       packetsReceived += 1;
-      NS_LOG_UNCOND (PrintReceivedPacket(socket, packet, senderAddress));
-    }
+      NS_LOG_UNCOND(PrintReceivedPacket(socket, packet, senderAddress));
+  }
 }
 
 Ptr<Socket> RoutingExperiment::SetupPacketReceive(Ipv4Address addr, Ptr<Node> node) {
@@ -107,7 +117,9 @@ Ptr<Socket> RoutingExperiment::SetupPacketReceive(Ipv4Address addr, Ptr<Node> no
   InetSocketAddress local = InetSocketAddress(addr, port);
   sink -> Bind(local);
   sink -> SetRecvCallback(MakeCallback(&RoutingExperiment::ReceivePacket, this));
-
+  int i = 0;
+  printf("%d", i);
+  i++;
   return sink;
 }
 
@@ -138,21 +150,20 @@ int main (int argc, char *argv[]) {
   int nSinks = 3;
   double txp = 7.5;
 
-  experiment.Run (nSinks, txp, CSVfileName);
+  experiment.Run(nSinks, txp, CSVfileName);
 }
 
-void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
+void RoutingExperiment::Run(int nSinks, double txp, std::string CSVfileName) {
   Packet::EnablePrinting();
   m_nSinks = nSinks;
   m_txp = txp;
   m_CSVfileName = CSVfileName;
 
   // Parameter: number of nodes per cluster
-  int nWifis = 12;
+  int nNodes = 6;
   // Parameter: number of cluster 
-  int nCluster = 2;
+  int nClusters = 6;
 
-  // number repetitions
   double TotalTime = 200.0;
   std::string rate("2048bps");
   std::string phyMode("DsssRate11Mbps");
@@ -168,7 +179,7 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode",StringValue (phyMode));
 
   // Layer 
-  int nTotalNodes = nCluster * nWifis;
+  int nTotalNodes = nClusters * nNodes;
 
   NodeContainer layer1;
   layer1.Create(nTotalNodes);
@@ -176,20 +187,28 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   NodeContainer layer2;
 
   // Clusters
-  NodeContainer adhocNodes;
-  NodeContainer adhocNodes2;
+  NodeContainer cluster;
+  NodeContainer cluster2;
+  NodeContainer cluster3;
+  NodeContainer cluster4;
+  NodeContainer cluster5;
+  NodeContainer cluster6;
 
-  for(int i = 0; i < nWifis; i++){
-    adhocNodes.Add(layer1.Get(i));
+  for(int i = 0; i < nNodes; i++){
+    cluster.Add(layer1.Get(i));
+    cluster2.Add(layer1.Get(i+nNodes));
+    cluster3.Add(layer1.Get(i+nNodes*2));
+    cluster4.Add(layer1.Get(i+nNodes*3));
+    cluster5.Add(layer1.Get(i+nNodes*4));
+    cluster6.Add(layer1.Get(i+nNodes*5));
   }
 
-  layer2.Add(adhocNodes.Get(0));
-
-  for(int i = 0; i < nWifis; i++){
-    adhocNodes2.Add(layer1.Get(i+nWifis));
-  }
-
-  layer2.Add(adhocNodes2.Get(0));
+  layer2.Add(cluster.Get(0));
+  layer2.Add(cluster2.Get(0));
+  layer2.Add(cluster3.Get(0));
+  layer2.Add(cluster4.Get(0));
+  layer2.Add(cluster5.Get(0));
+  layer2.Add(cluster6.Get(0));
 
   //////////////////////////////////// START /////////////////////////////////////////
 
@@ -216,9 +235,7 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   wifiMac.SetType("ns3::AdhocWifiMac");
 
   NetDeviceContainer nLayer1 = wifi.Install(wifiPhy, wifiMac, layer1);
-
-  ////////// Setting up wifi phy and channel using helpers 2
-
+  /////////////////////////////////////////////////////////////////////
   YansWifiPhyHelper wifiPhy2;
   YansWifiChannelHelper wifiChannel2;
   wifiChannel2.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -231,10 +248,8 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   wifiPhy2.Set("TxPowerStart",DoubleValue(txp));
   wifiPhy2.Set("TxPowerEnd", DoubleValue(txp));
 
-  NetDeviceContainer adhocDevices = wifi.Install(wifiPhy2, wifiMac, adhocNodes);
-
-  ///////// Setting up wifi phy and channel using helpers 3
-
+  NetDeviceContainer netCluster = wifi.Install(wifiPhy2, wifiMac, cluster);
+  /////////////////////////////////////////////////////////////////////
   YansWifiPhyHelper wifiPhy3;
   YansWifiChannelHelper wifiChannel3;
   wifiChannel3.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -244,9 +259,8 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   wifiPhy3.Set("TxPowerStart",DoubleValue(txp));
   wifiPhy3.Set("TxPowerEnd", DoubleValue(txp));
 
-  NetDeviceContainer adhocDevices2 = wifi.Install(wifiPhy3, wifiMac, adhocNodes2);
-  ///////// Setting up wifi phy and channel using helpers 3
-
+  NetDeviceContainer netCluster2 = wifi.Install(wifiPhy3, wifiMac, cluster2);
+  /////////////////////////////////////////////////////////////////////
   YansWifiPhyHelper wifiPhy4;
   YansWifiChannelHelper wifiChannel4;
   wifiChannel4.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
@@ -256,8 +270,51 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   wifiPhy4.Set("TxPowerStart",DoubleValue(txp));
   wifiPhy4.Set("TxPowerEnd", DoubleValue(txp));
 
-  NetDeviceContainer nLayer2 = wifi.Install(wifiPhy4, wifiMac, layer2);
+  NetDeviceContainer netCluster3 = wifi.Install(wifiPhy4, wifiMac, cluster3);
+  /////////////////////////////////////////////////////////////////////
+  YansWifiPhyHelper wifiPhy5;
+  YansWifiChannelHelper wifiChannel5;
+  wifiChannel5.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel5.AddPropagationLoss("ns3::FriisPropagationLossModel");
+  wifiPhy5.SetChannel(wifiChannel5.Create());
 
+  wifiPhy5.Set("TxPowerStart",DoubleValue(txp));
+  wifiPhy5.Set("TxPowerEnd", DoubleValue(txp));
+
+  NetDeviceContainer netCluster4 = wifi.Install(wifiPhy5, wifiMac, cluster4);
+  /////////////////////////////////////////////////////////////////////
+  YansWifiPhyHelper wifiPhy6;
+  YansWifiChannelHelper wifiChannel6;
+  wifiChannel6.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel6.AddPropagationLoss("ns3::FriisPropagationLossModel");
+  wifiPhy6.SetChannel(wifiChannel6.Create());
+
+  wifiPhy6.Set("TxPowerStart",DoubleValue(txp));
+  wifiPhy6.Set("TxPowerEnd", DoubleValue(txp));
+
+  NetDeviceContainer netCluster5 = wifi.Install(wifiPhy6, wifiMac, cluster5);
+  /////////////////////////////////////////////////////////////////////
+  YansWifiPhyHelper wifiPhy7;
+  YansWifiChannelHelper wifiChannel7;
+  wifiChannel7.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel7.AddPropagationLoss("ns3::FriisPropagationLossModel");
+  wifiPhy7.SetChannel(wifiChannel7.Create());
+
+  wifiPhy7.Set("TxPowerStart",DoubleValue(txp));
+  wifiPhy7.Set("TxPowerEnd", DoubleValue(txp));
+
+  NetDeviceContainer netCluster6 = wifi.Install(wifiPhy7, wifiMac, cluster6);
+  /////////////////////////////////////////////////////////////////////
+  YansWifiPhyHelper wifiPhy8;
+  YansWifiChannelHelper wifiChannel8;
+  wifiChannel8.SetPropagationDelay("ns3::ConstantSpeedPropagationDelayModel");
+  wifiChannel8.AddPropagationLoss("ns3::FriisPropagationLossModel");
+  wifiPhy8.SetChannel(wifiChannel8.Create());
+
+  wifiPhy8.Set("TxPowerStart",DoubleValue(txp));
+  wifiPhy8.Set("TxPowerEnd", DoubleValue(txp));
+
+  NetDeviceContainer nLayer2 = wifi.Install(wifiPhy8, wifiMac, layer2);
   //////////////////////////////////// END /////////////////////////////////////////
 
   MobilityHelper mobilityAdhoc;
@@ -267,8 +324,10 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   ObjectFactory pos;
   // Parameter: Geographical space 
   pos.SetTypeId ("ns3::RandomRectanglePositionAllocator");
-  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=40.0]"));
-  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=40.0]"));
+  pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
+  pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=500.0]"));
+  //pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=40.0]"));
+  //pos.Set ("Y", StringValue ("ns3::UniformRandomVariable[Min=0.0|Max=40.0]"));
 
   Ptr<PositionAllocator> taPositionAlloc = pos.Create ()->GetObject<PositionAllocator> ();
   streamIndex += taPositionAlloc->AssignStreams (streamIndex);
@@ -282,8 +341,13 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
                                   "Pause", StringValue (ssPause.str ()),
                                   "PositionAllocator", PointerValue (taPositionAlloc));
   mobilityAdhoc.SetPositionAllocator(taPositionAlloc);
-  mobilityAdhoc.Install(adhocNodes);
-
+  mobilityAdhoc.Install(cluster);
+  mobilityAdhoc.Install(cluster2);
+  mobilityAdhoc.Install(cluster3);
+  mobilityAdhoc.Install(cluster4);
+  mobilityAdhoc.Install(cluster5);
+  mobilityAdhoc.Install(cluster6);
+/*
   // Parameter: Geographical space 
   pos.SetTypeId ("ns3::RandomRectanglePositionAllocator");
   pos.Set ("X", StringValue ("ns3::UniformRandomVariable[Min=120.0|Max=150.0]"));
@@ -292,34 +356,22 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   taPositionAlloc = pos.Create ()->GetObject<PositionAllocator> ();
   streamIndex += taPositionAlloc->AssignStreams (streamIndex);
 
-  ssSpeed << "ns3::UniformRandomVariable[Min=0.0|Max=" << nodeSpeed << "]";
-  ssPause << "ns3::ConstantRandomVariable[Constant=" << nodePause << "]";
   mobilityAdhoc.SetMobilityModel ("ns3::RandomWaypointMobilityModel",
                                   "Speed", StringValue (ssSpeed.str ()),
                                   "Pause", StringValue (ssPause.str ()),
                                   "PositionAllocator", PointerValue (taPositionAlloc));
   mobilityAdhoc.SetPositionAllocator(taPositionAlloc);
-  mobilityAdhoc.Install(adhocNodes2);
-
-  streamIndex += mobilityAdhoc.AssignStreams (adhocNodes, streamIndex);
+  mobilityAdhoc.Install(cluster2);
+*/
+  streamIndex += mobilityAdhoc.AssignStreams (cluster, streamIndex);
 
   NS_UNUSED (streamIndex); // From this point, streamIndex is unused
 
-  AodvHelper aodv;
   OlsrHelper olsr;
   Ipv4ListRoutingHelper list;
   InternetStackHelper internet;
-
-  switch (m_protocol) {
-    case 1:
-      list.Add (olsr, 100);
-      m_protocolName = "OLSR";
-      break;
-    case 2:
-      list.Add (aodv, 100);
-      m_protocolName = "AODV";
-      break;
-  }
+  list.Add (olsr, 100);
+  m_protocolName = "OLSR";
 
   internet.SetRoutingHelper(list);
   internet.Install(layer1);
@@ -330,53 +382,54 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
 
   Ipv4AddressHelper ipv4;
   ipv4.SetBase("10.1.1.0", "255.255.255.0");
-  Ipv4InterfaceContainer layer1Interfaces = ipv4.Assign(nLayer1);
+  Ipv4InterfaceContainer layer1I = ipv4.Assign(nLayer1);
 
   ipv4.SetBase("10.1.2.0", "255.255.255.0");
-  Ipv4InterfaceContainer adhocInterfaces = ipv4.Assign(adhocDevices);
+  Ipv4InterfaceContainer clusterI = ipv4.Assign(netCluster);
 
   ipv4.SetBase("10.1.3.0", "255.255.255.0");
-  Ipv4InterfaceContainer adhocInterfaces2 = ipv4.Assign(adhocDevices2);
+  Ipv4InterfaceContainer cluster2I = ipv4.Assign(netCluster2);
 
   ipv4.SetBase("10.1.4.0", "255.255.255.0");
-  Ipv4InterfaceContainer layer2Interfaces = ipv4.Assign(nLayer2);
+  Ipv4InterfaceContainer cluster3I = ipv4.Assign(netCluster3);
+
+  ipv4.SetBase("10.1.5.0", "255.255.255.0");
+  Ipv4InterfaceContainer cluster4I = ipv4.Assign(netCluster4);
+
+  ipv4.SetBase("10.1.6.0", "255.255.255.0");
+  Ipv4InterfaceContainer cluster5I = ipv4.Assign(netCluster5);
+
+  ipv4.SetBase("10.1.7.0", "255.255.255.0");
+  Ipv4InterfaceContainer cluster6I = ipv4.Assign(netCluster6);
+
+  ipv4.SetBase("10.1.8.0", "255.255.255.0");
+  Ipv4InterfaceContainer layer2I = ipv4.Assign(nLayer2);
 
   //OnOffHelper onoff1 ("ns3::UdpSocketFactory", Address());
-  OnOffHelper onoff1 ("ns3::UdpSocketFactory", InetSocketAddress(layer2Interfaces.GetAddress(0), port));
+  OnOffHelper onoff1 ("ns3::UdpSocketFactory", InetSocketAddress(layer2I.GetAddress(0), port));
 
   // Poisson ??
   onoff1.SetAttribute ("OnTime", StringValue ("ns3::ConstantRandomVariable[Constant=1.0]"));
   onoff1.SetAttribute ("OffTime", StringValue ("ns3::ConstantRandomVariable[Constant=0.0]"));
 
   // Sending Pack
-
   for(int i = 0; i < 1; i++){
 
     ////// RECEIVER 
-
-    //Ptr<Socket> sink = SetupPacketReceive(adhocInterfaces.GetAddress(0), adhocNodes.Get(0));
-    //AddressValue remoteAddress(InetSocketAddress(adhocInterfaces.GetAddress(0), port));
-    Ptr<Socket> sink = SetupPacketReceive(layer2Interfaces.GetAddress(0), layer2.Get(0));
-    //AddressValue remoteAddress(InetSocketAddress(layer2Interfaces.GetAddress(0), port));
-
-    //AddressValue remoteAddress2(InetSocketAddress(adhocInterfaces2.GetAddress(0), port));
-
-    //onoff1.SetAttribute ("Remote", remoteAddress);
-    //onoff1.SetAttribute ("Remote", remoteAddress2);
+    Ptr<Socket> sink = SetupPacketReceive(layer2I.GetAddress(0), layer2.Get(0));
 
     ////// SENDER
-
     Ptr<UniformRandomVariable> var = CreateObject<UniformRandomVariable>();
-    //ApplicationContainer temp = onoff1.Install(adhocNodes.Get(1));
-    //ApplicationContainer temp = onoff1.Install(adhocNodes2.Get(0));
-    //ApplicationContainer temp = onoff1.Install(layer1.Get(12));
-    ApplicationContainer temp = onoff1.Install(layer1.Get(12));
-    temp.Start (Seconds (var -> GetValue (100.0, 101.0)));
-    temp.Stop (Seconds (TotalTime));
+    ApplicationContainer temp = onoff1.Install(layer1.Get(31));
+    double t = var->GetValue(10.0, 11.0);
+
+    temp.Start(Seconds(t));
+    //temp.Start (Seconds(var->GetValue(100.0, 101.0)));
+    temp.Stop(Seconds(TotalTime));
   }
 
   std::stringstream ss;
-  ss << nWifis;
+  ss << nNodes;
   std::string nodes = ss.str();
 
   std::stringstream ss2;
@@ -392,20 +445,64 @@ void RoutingExperiment::Run (int nSinks, double txp, std::string CSVfileName) {
   std::string sRate = ss4.str();
 
   AsciiTraceHelper ascii;
-  MobilityHelper::EnableAsciiAll(ascii.CreateFileStream (tr_name + ".mob"));
+  MobilityHelper::EnableAsciiAll(ascii.CreateFileStream(tr_name + ".mob"));
 
-  //Ptr<FlowMonitor> flowmon;
-  //FlowMonitorHelper flowmonHelper;
-  //flowmon = flowmonHelper.InstallAll ();
+  FlowMonitorHelper flowmon;
+  Ptr<FlowMonitor> monitor = flowmon.InstallAll();
+
+  Ptr<Ipv4FlowClassifier> classifier = DynamicCast<Ipv4FlowClassifier>(flowmon.GetClassifier ());
+  std::map<FlowId, FlowMonitor::FlowStats> stats = monitor->GetFlowStats();
 
   NS_LOG_INFO ("Run Simulation.");
 
   CheckThroughput();
 
-  Simulator::Stop(Seconds (TotalTime));
+  Simulator::Stop(Seconds(TotalTime));
   Simulator::Run();
 
-  //flowmon->SerializeToXmlFile ((tr_name + ".flowmon").c_str(), false, false);
+  NS_LOG_UNCOND("Checking for lost packets...");
+
+  monitor->CheckForLostPackets ();
+
+  Time totalTimeSending = Time(0.0);
+  long int amountOfData = 0;
+
+  NS_LOG_UNCOND("Checking flows...");
+  
+  for(std::map<FlowId, FlowMonitor::FlowStats>::const_iterator iter = stats.begin (); iter != stats.end (); ++iter) {
+    Ipv4FlowClassifier::FiveTuple t = classifier->FindFlow (iter->first);
+    
+    if(t.sourcePort == port || t.destinationPort == port) {
+      NS_LOG_UNCOND("Flow ID: " << iter->first << " Src Addr " << t.sourceAddress << " Dst Addr " << t.destinationAddress << " Protocol " << t.protocol);
+      NS_LOG_UNCOND("Tx Packets: " << iter->second.txPackets);
+      NS_LOG_UNCOND("Rx Packets: " << iter->second.rxPackets);
+
+      NS_LOG_UNCOND("Lost Packets: " << iter->second.lostPackets);
+      //NS_LOG_UNCOND("Dropped Packets: " << iter->second.packetsDropped);
+      NS_LOG_UNCOND("Time First Tx Packet: " << iter->second.timeFirstTxPacket);
+      NS_LOG_UNCOND("Time Last Tx Packet: " << iter->second.timeLastTxPacket);
+      NS_LOG_UNCOND("Time First Rx Packet: " << iter->second.timeFirstRxPacket);
+      NS_LOG_UNCOND("Time Last Rx Packet: " << iter->second.timeLastRxPacket);
+      Time startTime = iter->second.timeFirstRxPacket;
+      Time endTime = iter->second.timeLastRxPacket;
+      totalTimeSending += endTime - startTime;
+      amountOfData = iter->second.rxBytes;
+
+      NS_LOG_UNCOND("Throughput: " << iter->second.rxBytes * 8.0 / (iter->second.timeLastRxPacket.GetSeconds()-iter->second.timeFirstTxPacket.GetSeconds()) / 1024  << " Kbps");
+    }
+  }
+  Time totalSimulationTime = Seconds(TotalTime);
+  double proportionTimeSending = totalTimeSending.GetSeconds() / totalSimulationTime.GetSeconds();
+  double transferRate = (amountOfData / 1000) / (totalTimeSending.GetInteger()/(1000000000));
+  double averageTraffic = (proportionTimeSending) * (double)(transferRate);
+  printf("%s\n", "####### RESULTS ######");
+  printf("%s %ld %s\n", "Total Time Sending:", totalTimeSending.GetInteger()/(1000000000), "seg");
+  //printf("%s %ld %s\n", "Amount Of Data:", amountOfData / 1000, "Kb");
+  //printf("%s %f %s\n", "Transfer Rate (D_yi):", transferRate, "Kbps");
+  //printf("%s %f\n", "Proportion (A_yi):", proportionTimeSending);
+  //printf("%s %f %s\n", "Average Traffic (B_yi):", averageTraffic, "Kbps");
+
+  monitor->SerializeToXmlFile((tr_name + ".flowmon").c_str(), false, false);
 
   Simulator::Destroy();
 }

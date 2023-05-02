@@ -464,8 +464,8 @@ void RoutingExperiment::Run(int nSinks, double txp, std::string CSVfileName) {
 
   monitor->CheckForLostPackets ();
 
-  Time totalTimeSending = Time(0.0);
-  long int amountOfData = 0;
+  //Time totalTimeSending = Time(0.0);
+  //long int amountOfData = 0;
 
   NS_LOG_UNCOND("Checking flows...");
   
@@ -483,20 +483,20 @@ void RoutingExperiment::Run(int nSinks, double txp, std::string CSVfileName) {
       NS_LOG_UNCOND("Time Last Tx Packet: " << iter->second.timeLastTxPacket);
       NS_LOG_UNCOND("Time First Rx Packet: " << iter->second.timeFirstRxPacket);
       NS_LOG_UNCOND("Time Last Rx Packet: " << iter->second.timeLastRxPacket);
-      Time startTime = iter->second.timeFirstRxPacket;
-      Time endTime = iter->second.timeLastRxPacket;
-      totalTimeSending += endTime - startTime;
-      amountOfData = iter->second.rxBytes;
+      //Time startTime = iter->second.timeFirstRxPacket;
+      //Time endTime = iter->second.timeLastRxPacket;
+      //totalTimeSending += endTime - startTime;
+      //amountOfData = iter->second.rxBytes;
 
       NS_LOG_UNCOND("Throughput: " << iter->second.rxBytes * 8.0 / (iter->second.timeLastRxPacket.GetSeconds()-iter->second.timeFirstTxPacket.GetSeconds()) / 1024  << " Kbps");
     }
   }
-  Time totalSimulationTime = Seconds(TotalTime);
-  double proportionTimeSending = totalTimeSending.GetSeconds() / totalSimulationTime.GetSeconds();
-  double transferRate = (amountOfData / 1000) / (totalTimeSending.GetInteger()/(1000000000));
-  double averageTraffic = (proportionTimeSending) * (double)(transferRate);
-  printf("%s\n", "####### RESULTS ######");
-  printf("%s %ld %s\n", "Total Time Sending:", totalTimeSending.GetInteger()/(1000000000), "seg");
+  //Time totalSimulationTime = Seconds(TotalTime);
+  //double proportionTimeSending = totalTimeSending.GetSeconds() / totalSimulationTime.GetSeconds();
+  //double transferRate = (amountOfData / 1000) / (totalTimeSending.GetInteger()/(1000000000));
+  //double averageTraffic = (proportionTimeSending) * (double)(transferRate);
+  //printf("%s\n", "####### RESULTS ######");
+  //printf("%s %ld %s\n", "Total Time Sending:", totalTimeSending.GetInteger()/(1000000000), "seg");
   //printf("%s %ld %s\n", "Amount Of Data:", amountOfData / 1000, "Kb");
   //printf("%s %f %s\n", "Transfer Rate (D_yi):", transferRate, "Kbps");
   //printf("%s %f\n", "Proportion (A_yi):", proportionTimeSending);

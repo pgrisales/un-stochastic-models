@@ -10,7 +10,7 @@ The Dockerfile copies all files from scratch folder.
 
 ## Example
 
-- `./waf --run scenario1`
+- `./waf --run scenario1-2l`
 
 ## To add visualization
 
@@ -20,4 +20,4 @@ The Dockerfile copies all files from scratch folder.
 
 ## Example
 
-- `./waf --run scenario1 --vis`
+- `./waf --run scenario1-2l --vis`

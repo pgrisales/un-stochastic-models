@@ -524,8 +524,8 @@ void RoutingExperiment::Run(int nSinks, double txp, std::string CSVfileName) {
         NS_LOG_UNCOND("Tx Packets = " << iter->second.txPackets);
         NS_LOG_UNCOND("Rx Packets = " << iter->second.rxPackets);
         NS_LOG_UNCOND("Throughput: " << iter->second.rxBytes * 8.0 / (iter->second.timeLastRxPacket.GetSeconds()-iter->second.timeFirstTxPacket.GetSeconds()) / 1024  << " Kbps");
-      }
     }
+  }
 
   monitor->SerializeToXmlFile((tr_name + ".flowmon").c_str(), false, false);
 
